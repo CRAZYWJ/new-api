@@ -168,6 +168,8 @@ export function ModelMutateDrawer({
       'global.pass_through_request_enabled': false,
       'global.thinking_model_blacklist': '[]',
       'global.chat_completions_to_responses_policy': '{}',
+      'global.input_modality_policy':
+        '{"enabled":true,"models":{"deepseek-chat":{"text":true,"image":false},"deepseek-reasoner":{"text":true,"image":false},"deepseek-v4-flash":{"text":true,"image":false},"deepseek-v4-pro":{"text":true,"image":false}}}',
       'general_setting.ping_interval_enabled': false,
       'general_setting.ping_interval_seconds': 60,
       'gemini.safety_settings': '',

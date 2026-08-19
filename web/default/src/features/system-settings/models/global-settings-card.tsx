@@ -76,6 +76,20 @@ const chatToResponsesPolicyAllChannelsExample = JSON.stringify(
   2
 )
 
+const defaultInputModalityPolicy = JSON.stringify(
+  {
+    enabled: true,
+    models: {
+      'deepseek-chat': { text: true, image: false },
+      'deepseek-reasoner': { text: true, image: false },
+      'deepseek-v4-flash': { text: true, image: false },
+      'deepseek-v4-pro': { text: true, image: false },
+    },
+  },
+  null,
+  2
+)
+
 const jsonString = z.string().refine((value) => {
   const trimmed = value.trim()
   if (!trimmed) return true
@@ -92,6 +106,7 @@ const schema = z.object({
     pass_through_request_enabled: z.boolean(),
     thinking_model_blacklist: jsonString,
     chat_completions_to_responses_policy: jsonString,
+    input_modality_policy: jsonString,
   }),
   general_setting: z.object({
     ping_interval_enabled: z.boolean(),
@@ -106,6 +121,7 @@ type FlatGlobalModelSettings = {
   'global.pass_through_request_enabled': boolean
   'global.thinking_model_blacklist': string
   'global.chat_completions_to_responses_policy': string
+  'global.input_modality_policy': string
   'general_setting.ping_interval_enabled': boolean
   'general_setting.ping_interval_seconds': number
 }
@@ -122,6 +138,10 @@ const flattenGlobalValues = (
   'global.chat_completions_to_responses_policy': normalizeJsonText(
     values.global.chat_completions_to_responses_policy,
     '{}'
+  ),
+  'global.input_modality_policy': normalizeJsonText(
+    values.global.input_modality_policy,
+    defaultInputModalityPolicy
   ),
   'general_setting.ping_interval_enabled':
     values.general_setting.ping_interval_enabled,
@@ -161,6 +181,7 @@ export function GlobalSettingsCard({ defaultValues }: GlobalSettingsCardProps) {
     field:
       | 'global.thinking_model_blacklist'
       | 'global.chat_completions_to_responses_policy'
+      | 'global.input_modality_policy'
   ) => {
     const raw = form.getValues(field)
     if (!raw || !raw.trim()) return
@@ -261,6 +282,68 @@ export function GlobalSettingsCard({ defaultValues }: GlobalSettingsCardProps) {
               </FormItem>
             )}
           />
+
+          <Separator />
+
+          <div className='space-y-4'>
+            <h3 className='text-base font-semibold'>
+              {t('Inbound Input Modality Policy')}
+            </h3>
+            <FormField
+              control={form.control}
+              name='global.input_modality_policy'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Policy JSON')}</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      rows={10}
+                      placeholder={`${t('Example:')}\n${defaultInputModalityPolicy}`}
+                      {...field}
+                      onChange={(event) => field.onChange(event.target.value)}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'When a request contains an input type the model does not support, the gateway returns HTTP 400 immediately instead of forwarding it upstream.'
+                    )}
+                  </FormDescription>
+                  <FormDescription>
+                    {t(
+                      'Model keys match the request model name. Prefix keys also match names that continue with a hyphen, such as deepseek-v4-flash-max. Models not listed are not validated.'
+                    )}
+                  </FormDescription>
+                  <div className='flex flex-wrap gap-2'>
+                    <Button
+                      type='button'
+                      variant='outline'
+                      size='sm'
+                      onClick={() =>
+                        form.setValue(
+                          'global.input_modality_policy',
+                          defaultInputModalityPolicy,
+                          { shouldDirty: true }
+                        )
+                      }
+                    >
+                      {t('Fill default policy')}
+                    </Button>
+                    <Button
+                      type='button'
+                      variant='outline'
+                      size='sm'
+                      onClick={() =>
+                        formatJsonField('global.input_modality_policy')
+                      }
+                    >
+                      {t('Format JSON')}
+                    </Button>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
 
           <Separator />
 

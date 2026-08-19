@@ -52,7 +52,13 @@ func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dt
 	default:
 		return nil, fmt.Errorf("unsupported relay format: %s", format)
 	}
-	return request, err
+	if err != nil {
+		return request, err
+	}
+	if err = ValidateInputModalities(c, request); err != nil {
+		return request, err
+	}
+	return request, nil
 }
 
 func GetAndValidAudioRequest(c *gin.Context, relayMode int) (*dto.AudioRequest, error) {

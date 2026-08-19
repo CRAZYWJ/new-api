@@ -54,6 +54,10 @@ const MODELS_SECTIONS = [
               settings['global.chat_completions_to_responses_policy'],
               '{}'
             ),
+            input_modality_policy: formatJsonForEditor(
+              settings['global.input_modality_policy'],
+              '{"enabled":true,"models":{"deepseek-chat":{"text":true,"image":false},"deepseek-reasoner":{"text":true,"image":false},"deepseek-v4-flash":{"text":true,"image":false},"deepseek-v4-pro":{"text":true,"image":false}}}'
+            ),
           },
           general_setting: {
             ping_interval_enabled:

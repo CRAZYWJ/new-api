@@ -50,7 +50,7 @@ func requireUnsupportedImage(t *testing.T, err error) {
 	assert.Equal(t, string(types.ErrorCodeUnsupportedInputType), openAIErr.Code)
 }
 
-func TestValidateInputModalitiesRejectsImageForTextOnlyModel(t *testing.T) {
+func TestValidateInputModalitiesRejectsLatestTurnImage(t *testing.T) {
 	withInputModalityPolicy(t, model_setting.InputModalityPolicy{
 		Enabled: true,
 		Models: map[string]model_setting.InputModalities{
@@ -111,6 +111,194 @@ func TestValidateInputModalitiesRejectsImageForTextOnlyModel(t *testing.T) {
 	})
 }
 
+func TestValidateInputModalitiesDropsHistoricalImageTurns(t *testing.T) {
+	withInputModalityPolicy(t, model_setting.InputModalityPolicy{
+		Enabled: true,
+		Models: map[string]model_setting.InputModalities{
+			"deepseek-v4-flash": {Image: common.GetPointer(false)},
+		},
+	})
+
+	t.Run("responses history with image then text-only turn", func(t *testing.T) {
+		body := `{
+			"model":"deepseek-v4-flash",
+			"input":[
+				{"role":"user","content":[
+					{"type":"input_text","text":"解释图片"},
+					{"type":"input_image","image_url":"https://example.test/a.png"}
+				]},
+				{"role":"user","content":[
+					{"type":"input_text","text":"你好"}
+				]}
+			]
+		}`
+		c := newJSONContext(t, "/v1/responses", body)
+		req, err := GetAndValidateRequest(c, types.RelayFormatOpenAIResponses)
+		require.NoError(t, err)
+		responsesReq, ok := req.(*dto.OpenAIResponsesRequest)
+		require.True(t, ok)
+
+		var items []map[string]any
+		require.NoError(t, common.Unmarshal(responsesReq.Input, &items))
+		require.Len(t, items, 1)
+		assert.Equal(t, "user", items[0]["role"])
+		assert.False(t, jsonHasTypeField(responsesReq.Input, "input_image"))
+
+		content, err := common.Marshal(items[0]["content"])
+		require.NoError(t, err)
+		assert.Contains(t, string(content), "你好")
+		assert.NotContains(t, string(content), "解释图片")
+	})
+
+	t.Run("chat history with image then text-only turn", func(t *testing.T) {
+		body := `{
+			"model":"deepseek-v4-flash",
+			"messages":[
+				{"role":"user","content":[
+					{"type":"text","text":"解释图片"},
+					{"type":"image_url","image_url":{"url":"https://example.test/a.png"}}
+				]},
+				{"role":"user","content":"你好"}
+			]
+		}`
+		c := newJSONContext(t, "/v1/chat/completions", body)
+		req, err := GetAndValidateRequest(c, types.RelayFormatOpenAI)
+		require.NoError(t, err)
+		chatReq, ok := req.(*dto.GeneralOpenAIRequest)
+		require.True(t, ok)
+		require.Len(t, chatReq.Messages, 1)
+		assert.Equal(t, "你好", chatReq.Messages[0].StringContent())
+	})
+
+	t.Run("responses flat history image then trailing text", func(t *testing.T) {
+		body := `{
+			"model":"deepseek-v4-flash",
+			"input":[
+				{"type":"input_text","text":"解释图片"},
+				{"type":"input_image","image_url":"https://example.test/a.png"},
+				{"type":"input_text","text":"你好"}
+			]
+		}`
+		c := newJSONContext(t, "/v1/responses", body)
+		req, err := GetAndValidateRequest(c, types.RelayFormatOpenAIResponses)
+		require.NoError(t, err)
+		responsesReq, ok := req.(*dto.OpenAIResponsesRequest)
+		require.True(t, ok)
+
+		var items []map[string]any
+		require.NoError(t, common.Unmarshal(responsesReq.Input, &items))
+		require.Len(t, items, 1)
+		assert.Equal(t, "input_text", items[0]["type"])
+		assert.Equal(t, "你好", items[0]["text"])
+		assert.False(t, jsonHasTypeField(responsesReq.Input, "input_image"))
+	})
+
+	t.Run("responses typed message history then text-only turn", func(t *testing.T) {
+		body := `{
+			"model":"deepseek-v4-flash",
+			"input":[
+				{"type":"message","role":"user","content":[
+					{"type":"input_text","text":"解释图片"},
+					{"type":"input_image","image_url":"https://example.test/a.png"}
+				]},
+				{"type":"message","role":"user","content":[
+					{"type":"input_text","text":"你好"}
+				]}
+			]
+		}`
+		c := newJSONContext(t, "/v1/responses", body)
+		req, err := GetAndValidateRequest(c, types.RelayFormatOpenAIResponses)
+		require.NoError(t, err)
+		responsesReq, ok := req.(*dto.OpenAIResponsesRequest)
+		require.True(t, ok)
+
+		var items []map[string]any
+		require.NoError(t, common.Unmarshal(responsesReq.Input, &items))
+		require.Len(t, items, 1)
+		assert.Equal(t, "user", items[0]["role"])
+		assert.False(t, jsonHasTypeField(responsesReq.Input, "input_image"))
+		content, err := common.Marshal(items[0]["content"])
+		require.NoError(t, err)
+		assert.Contains(t, string(content), "你好")
+		assert.NotContains(t, string(content), "解释图片")
+	})
+
+	t.Run("responses drops assistant after historical image turn", func(t *testing.T) {
+		body := `{
+			"model":"deepseek-v4-flash",
+			"input":[
+				{"role":"user","content":[
+					{"type":"input_text","text":"解释图片"},
+					{"type":"input_image","image_url":"https://example.test/a.png"}
+				]},
+				{"role":"assistant","content":[{"type":"output_text","text":"unsupported input type: image"}]},
+				{"role":"user","content":[{"type":"input_text","text":"你好"}]}
+			]
+		}`
+		c := newJSONContext(t, "/v1/responses", body)
+		req, err := GetAndValidateRequest(c, types.RelayFormatOpenAIResponses)
+		require.NoError(t, err)
+		responsesReq, ok := req.(*dto.OpenAIResponsesRequest)
+		require.True(t, ok)
+
+		var items []map[string]any
+		require.NoError(t, common.Unmarshal(responsesReq.Input, &items))
+		require.Len(t, items, 1)
+		assert.Equal(t, "user", items[0]["role"])
+		content, err := common.Marshal(items[0]["content"])
+		require.NoError(t, err)
+		assert.Contains(t, string(content), "你好")
+	})
+
+	t.Run("responses drops function calls after historical image turn", func(t *testing.T) {
+		body := `{
+			"model":"deepseek-v4-flash",
+			"input":[
+				{"type":"message","role":"user","content":[
+					{"type":"input_text","text":"解释图片"},
+					{"type":"input_image","image_url":"https://example.test/a.png"}
+				]},
+				{"type":"function_call","name":"read_file","call_id":"c1","arguments":"{}"},
+				{"type":"function_call_output","call_id":"c1","output":"ok"},
+				{"type":"message","role":"user","content":[{"type":"input_text","text":"你好"}]}
+			]
+		}`
+		c := newJSONContext(t, "/v1/responses", body)
+		req, err := GetAndValidateRequest(c, types.RelayFormatOpenAIResponses)
+		require.NoError(t, err)
+		responsesReq, ok := req.(*dto.OpenAIResponsesRequest)
+		require.True(t, ok)
+
+		var items []map[string]any
+		require.NoError(t, common.Unmarshal(responsesReq.Input, &items))
+		require.Len(t, items, 1)
+		assert.Equal(t, "message", items[0]["type"])
+		assert.Equal(t, "user", items[0]["role"])
+		assert.False(t, jsonHasTypeField(responsesReq.Input, "function_call"))
+	})
+
+	t.Run("chat drops assistant after historical image turn", func(t *testing.T) {
+		body := `{
+			"model":"deepseek-v4-flash",
+			"messages":[
+				{"role":"user","content":[
+					{"type":"text","text":"解释图片"},
+					{"type":"image_url","image_url":{"url":"https://example.test/a.png"}}
+				]},
+				{"role":"assistant","content":"unsupported input type: image"},
+				{"role":"user","content":"你好"}
+			]
+		}`
+		c := newJSONContext(t, "/v1/chat/completions", body)
+		req, err := GetAndValidateRequest(c, types.RelayFormatOpenAI)
+		require.NoError(t, err)
+		chatReq, ok := req.(*dto.GeneralOpenAIRequest)
+		require.True(t, ok)
+		require.Len(t, chatReq.Messages, 1)
+		assert.Equal(t, "你好", chatReq.Messages[0].StringContent())
+	})
+}
+
 func TestValidateInputModalitiesAllowsCompatibleRequests(t *testing.T) {
 	withInputModalityPolicy(t, model_setting.InputModalityPolicy{
 		Enabled: true,
@@ -161,7 +349,7 @@ func TestValidateInputModalitiesClaudeAndGemini(t *testing.T) {
 		},
 	})
 
-	t.Run("claude image", func(t *testing.T) {
+	t.Run("claude latest turn image", func(t *testing.T) {
 		body := `{
 			"model":"text-only",
 			"max_tokens":16,
@@ -175,6 +363,49 @@ func TestValidateInputModalitiesClaudeAndGemini(t *testing.T) {
 		requireUnsupportedImage(t, err)
 	})
 
+	t.Run("claude drops historical image turn", func(t *testing.T) {
+		body := `{
+			"model":"text-only",
+			"max_tokens":16,
+			"messages":[
+				{"role":"user","content":[
+					{"type":"text","text":"解释图片"},
+					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"abc"}}
+				]},
+				{"role":"assistant","content":"unsupported input type: image"},
+				{"role":"user","content":"你好"}
+			]
+		}`
+		c := newJSONContext(t, "/v1/messages", body)
+		req, err := GetAndValidateRequest(c, types.RelayFormatClaude)
+		require.NoError(t, err)
+		claudeReq, ok := req.(*dto.ClaudeRequest)
+		require.True(t, ok)
+		require.Len(t, claudeReq.Messages, 1)
+		assert.Equal(t, "你好", claudeReq.Messages[0].GetStringContent())
+	})
+
+	t.Run("claude strips system image and forwards text turn", func(t *testing.T) {
+		body := `{
+			"model":"text-only",
+			"max_tokens":16,
+			"system":[
+				{"type":"text","text":"you are a helper"},
+				{"type":"image","source":{"type":"base64","media_type":"image/png","data":"abc"}}
+			],
+			"messages":[{"role":"user","content":"你好"}]
+		}`
+		c := newJSONContext(t, "/v1/messages", body)
+		req, err := GetAndValidateRequest(c, types.RelayFormatClaude)
+		require.NoError(t, err)
+		claudeReq, ok := req.(*dto.ClaudeRequest)
+		require.True(t, ok)
+		require.Len(t, claudeReq.Messages, 1)
+		system := claudeReq.ParseSystem()
+		require.Len(t, system, 1)
+		assert.Equal(t, "text", system[0].Type)
+	})
+
 	t.Run("gemini inline image uses original model", func(t *testing.T) {
 		body := `{
 			"contents":[{"parts":[
@@ -186,6 +417,71 @@ func TestValidateInputModalitiesClaudeAndGemini(t *testing.T) {
 		common.SetContextKey(c, constant.ContextKeyOriginalModel, "text-only")
 		_, err := GetAndValidateRequest(c, types.RelayFormatGemini)
 		requireUnsupportedImage(t, err)
+	})
+
+	t.Run("gemini drops historical image turn", func(t *testing.T) {
+		body := `{
+			"contents":[
+				{"role":"user","parts":[
+					{"text":"解释图片"},
+					{"inline_data":{"mime_type":"image/png","data":"abc"}}
+				]},
+				{"role":"model","parts":[{"text":"unsupported input type: image"}]},
+				{"role":"user","parts":[{"text":"你好"}]}
+			]
+		}`
+		c := newJSONContext(t, "/v1beta/models/text-only:generateContent", body)
+		common.SetContextKey(c, constant.ContextKeyOriginalModel, "text-only")
+		req, err := GetAndValidateRequest(c, types.RelayFormatGemini)
+		require.NoError(t, err)
+		geminiReq, ok := req.(*dto.GeminiChatRequest)
+		require.True(t, ok)
+		require.Len(t, geminiReq.Contents, 1)
+		require.Len(t, geminiReq.Contents[0].Parts, 1)
+		assert.Equal(t, "你好", geminiReq.Contents[0].Parts[0].Text)
+	})
+
+	t.Run("gemini drops empty-role historical image before user text", func(t *testing.T) {
+		body := `{
+			"contents":[
+				{"parts":[
+					{"text":"解释图片"},
+					{"inline_data":{"mime_type":"image/png","data":"abc"}}
+				]},
+				{"role":"user","parts":[{"text":"你好"}]}
+			]
+		}`
+		c := newJSONContext(t, "/v1beta/models/text-only:generateContent", body)
+		common.SetContextKey(c, constant.ContextKeyOriginalModel, "text-only")
+		req, err := GetAndValidateRequest(c, types.RelayFormatGemini)
+		require.NoError(t, err)
+		geminiReq, ok := req.(*dto.GeminiChatRequest)
+		require.True(t, ok)
+		require.Len(t, geminiReq.Contents, 1)
+		assert.Equal(t, "你好", geminiReq.Contents[0].Parts[0].Text)
+	})
+
+	t.Run("gemini last model role does not hide previous user turn", func(t *testing.T) {
+		body := `{
+			"contents":[
+				{"role":"user","parts":[
+					{"text":"解释图片"},
+					{"inline_data":{"mime_type":"image/png","data":"abc"}}
+				]},
+				{"role":"user","parts":[{"text":"你好"}]},
+				{"role":"model","parts":[{"text":"ok"}]}
+			]
+		}`
+		c := newJSONContext(t, "/v1beta/models/text-only:generateContent", body)
+		common.SetContextKey(c, constant.ContextKeyOriginalModel, "text-only")
+		req, err := GetAndValidateRequest(c, types.RelayFormatGemini)
+		require.NoError(t, err)
+		geminiReq, ok := req.(*dto.GeminiChatRequest)
+		require.True(t, ok)
+		require.Len(t, geminiReq.Contents, 2)
+		assert.Equal(t, "user", geminiReq.Contents[0].Role)
+		assert.Equal(t, "你好", geminiReq.Contents[0].Parts[0].Text)
+		assert.Equal(t, "model", geminiReq.Contents[1].Role)
 	})
 }
 
@@ -213,4 +509,33 @@ func TestGetAndValidateTextRequestStillBoundsMaxTokens(t *testing.T) {
 	req, err := GetAndValidateTextRequest(c, relayconstant.RelayModeChatCompletions)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, *req.MaxTokens)
+}
+
+func jsonHasTypeField(data []byte, typeName string) bool {
+	var value any
+	if err := common.Unmarshal(data, &value); err != nil {
+		return false
+	}
+	return walkJSONHasType(value, typeName)
+}
+
+func walkJSONHasType(value any, typeName string) bool {
+	switch item := value.(type) {
+	case map[string]any:
+		if got, ok := item["type"].(string); ok && got == typeName {
+			return true
+		}
+		for _, child := range item {
+			if walkJSONHasType(child, typeName) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range item {
+			if walkJSONHasType(child, typeName) {
+				return true
+			}
+		}
+	}
+	return false
 }

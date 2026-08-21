@@ -305,7 +305,12 @@ export function GlobalSettingsCard({ defaultValues }: GlobalSettingsCardProps) {
                   </FormControl>
                   <FormDescription>
                     {t(
-                      'When a request contains an input type the model does not support, the gateway returns HTTP 400 immediately instead of forwarding it upstream.'
+                      'If the current turn contains an input type the model does not support, the gateway returns HTTP 400 instead of forwarding it upstream.'
+                    )}
+                  </FormDescription>
+                  <FormDescription>
+                    {t(
+                      'If only earlier turns contain unsupported inputs, those historical turns are dropped so the conversation can continue with text-only requests.'
                     )}
                   </FormDescription>
                   <FormDescription>

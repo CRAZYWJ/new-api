@@ -162,3 +162,8 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.40.1 // indirect
 )
+
+// Patch gorm postgres driver: typeAliasMap adds varchar alias so explicit
+// type:varchar(N) columns are not treated as type-mismatched on every startup
+// (was: ALTER TABLE ... TYPE on each boot, blocked by views referencing the column).
+replace gorm.io/driver/postgres => ./third_party/gorm-postgres

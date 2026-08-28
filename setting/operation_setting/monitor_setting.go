@@ -13,6 +13,10 @@ type MonitorSetting struct {
 	AutoTestChannelMinutes float64 `json:"auto_test_channel_minutes"`
 	ChannelTestMode        string  `json:"channel_test_mode"`
 	ChannelTestConcurrency int     `json:"channel_test_concurrency"`
+	// ChannelTestWhitelist restricts scheduled channel tests to the listed
+	// channel IDs. Empty means no restriction (all channels selected by the
+	// test mode). Manual "test all channels" runs are not restricted.
+	ChannelTestWhitelist []int `json:"channel_test_whitelist"`
 }
 
 const (

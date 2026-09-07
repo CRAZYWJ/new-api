@@ -1005,6 +1005,12 @@ type Input struct {
 	Type    string          `json:"type,omitempty"`
 	Role    string          `json:"role,omitempty"`
 	Content json.RawMessage `json:"content,omitempty"`
+	// Tool-call items carry their payload in these fields instead of
+	// `content`: function_call uses Arguments, custom_tool_call uses
+	// ToolInput, function_call_output / custom_tool_call_output use Output.
+	Arguments json.RawMessage `json:"arguments,omitempty"`
+	Output    json.RawMessage `json:"output,omitempty"`
+	ToolInput json.RawMessage `json:"input,omitempty"`
 }
 
 type MediaInput struct {
@@ -1019,7 +1025,8 @@ type MediaInput struct {
 // Reference implementation mirrors Message.ParseContent:
 //   - input can be a string, treated as an input_text item
 //   - input can be an array of objects with a `type` field
-//     supported types: input_text, input_image, input_file
+//     supported types: input_text, input_image, input_file, output_text,
+//     function_call, function_call_output, custom_tool_call, custom_tool_call_output
 func (r *OpenAIResponsesRequest) ParseInput() []MediaInput {
 	if r.Input == nil {
 		return nil
@@ -1050,6 +1057,23 @@ func (r *OpenAIResponsesRequest) ParseInput() []MediaInput {
 				mediaInputs = append(mediaInputs, MediaInput{Type: "input_text", Text: str})
 			}
 
+			// Tool-call items carry their payload in dedicated fields
+			// instead of `content`.
+			switch input.Type {
+			case "function_call":
+				if text := rawJSONText(input.Arguments); text != "" {
+					mediaInputs = append(mediaInputs, MediaInput{Type: "function_call", Text: text})
+				}
+			case "custom_tool_call":
+				if text := rawJSONText(input.ToolInput); text != "" {
+					mediaInputs = append(mediaInputs, MediaInput{Type: "custom_tool_call", Text: text})
+				}
+			case "function_call_output", "custom_tool_call_output":
+				if text := rawJSONText(input.Output); text != "" {
+					mediaInputs = append(mediaInputs, MediaInput{Type: input.Type, Text: text})
+				}
+			}
+
 			if kitutil.GetJsonType(input.Content) == "array" {
 				var array []any
 				_ = kitutil.Unmarshal(input.Content, &array)
@@ -1074,6 +1098,9 @@ func (r *OpenAIResponsesRequest) ParseInput() []MediaInput {
 					case "input_text":
 						text, _ := item["text"].(string)
 						mediaInputs = append(mediaInputs, MediaInput{Type: "input_text", Text: text})
+					case "output_text":
+						text, _ := item["text"].(string)
+						mediaInputs = append(mediaInputs, MediaInput{Type: "output_text", Text: text})
 					case "input_image":
 						// image_url may be string or object with url field
 						var imageUrl string
@@ -1105,4 +1132,17 @@ func (r *OpenAIResponsesRequest) ParseInput() []MediaInput {
 	}
 
 	return mediaInputs
+}
+
+// rawJSONText renders a JSON raw value as plain text for token estimation:
+// JSON strings are unquoted, anything else falls back to its raw form.
+func rawJSONText(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var s string
+	if err := kitutil.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	return string(raw)
 }

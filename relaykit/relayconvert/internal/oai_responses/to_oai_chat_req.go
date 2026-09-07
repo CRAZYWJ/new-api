@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
+	"github.com/samber/lo"
 )
 
 const (
@@ -102,6 +103,15 @@ func ResponsesRequestToChatCompletionsRequest(req *dto.OpenAIResponsesRequest) (
 		if err := kitutil.Unmarshal(req.PromptCacheKey, &promptCacheKey); err == nil {
 			out.PromptCacheKey = promptCacheKey
 		}
+	}
+
+	// Clients calling /v1/responses (e.g. Codex) often omit stream_options.
+	// Without include_usage, OpenAI-compatible upstreams (SGLang, vLLM) reply
+	// to stream requests without usage, forcing new-api to fall back to local
+	// token estimation. Force it on for streams so the final chunk carries
+	// real usage.
+	if lo.FromPtrOr(req.Stream, false) && (out.StreamOptions == nil || !out.StreamOptions.IncludeUsage) {
+		out.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
 	}
 
 	return out, nil

@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
+	"github.com/samber/lo"
 )
 
 const (
@@ -207,6 +208,17 @@ func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info con
 	}
 
 	openAIRequest.Messages = openAIMessages
+
+	// Anthropic Messages clients have no stream_options field. Without
+	// include_usage, OpenAI-compatible upstreams (SGLang, vLLM) skip the final
+	// usage-only chunk, leaving the chat→Claude response converter's deferred
+	// close unresolved — the stream then ends without message_delta/message_stop.
+	// Mirror the injection the plain OpenAI channel performs in
+	// relay/channel/openai/adaptor.go ConvertClaudeRequest.
+	if lo.FromPtrOr(openAIRequest.Stream, false) && (openAIRequest.StreamOptions == nil || !openAIRequest.StreamOptions.IncludeUsage) {
+		openAIRequest.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
+	}
+
 	return &openAIRequest, nil
 }
 

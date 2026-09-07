@@ -251,6 +251,7 @@ func (s *ChatToResponsesStreamState) doneDeltaEvents() []ChatToResponsesStreamEv
 			OutputIndex:  intPtr(s.textOutputIndex),
 			ContentIndex: intPtr(0),
 			ItemID:       s.messageID(),
+			Text:         s.text.String(),
 		}))
 		events = append(events, responsesStreamEvent(responsesEventOutputItemDone, dto.ResponsesStreamResponse{
 			Type:        responsesEventOutputItemDone,
@@ -285,6 +286,7 @@ func (s *ChatToResponsesStreamState) doneDeltaEvents() []ChatToResponsesStreamEv
 			Type:        responsesEventFunctionArgsDone,
 			OutputIndex: intPtr(tool.OutputIndex),
 			ItemID:      tool.ID,
+			Arguments:   tool.Arguments.String(),
 		}))
 		events = append(events, responsesStreamEvent(responsesEventOutputItemDone, dto.ResponsesStreamResponse{
 			Type:        responsesEventOutputItemDone,
@@ -320,7 +322,7 @@ func (s *ChatToResponsesStreamState) finalResponse() *dto.OpenAIResponsesRespons
 	return &dto.OpenAIResponsesResponse{
 		ID:                s.ID,
 		Object:            "response",
-		CreatedAt:         int(s.Created),
+		CreatedAt:         dto.EpochSeconds(s.Created),
 		Status:            []byte(fmt.Sprintf("%q", s.status)),
 		IncompleteDetails: s.incompleteDetails,
 		Model:             s.Model,
@@ -333,7 +335,7 @@ func (s *ChatToResponsesStreamState) createdResponse() *dto.OpenAIResponsesRespo
 	return &dto.OpenAIResponsesResponse{
 		ID:        s.ID,
 		Object:    "response",
-		CreatedAt: int(s.Created),
+		CreatedAt: dto.EpochSeconds(s.Created),
 		Status:    []byte(`"in_progress"`),
 		Model:     s.Model,
 		Output:    []dto.ResponsesOutput{},

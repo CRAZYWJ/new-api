@@ -350,6 +350,36 @@ func TestResponsesRequestToChatCompletionsRequestRejectsMalformedPenalty(t *test
 	assert.Contains(t, err.Error(), "frequency_penalty")
 }
 
+func TestResponsesRequestToChatCompletionsRequestForcesStreamUsage(t *testing.T) {
+	streamTrue := true
+	streamFalse := false
+	tests := []struct {
+		name          string
+		stream        *bool
+		streamOptions *dto.StreamOptions
+		wantOptions   *dto.StreamOptions
+	}{
+		{name: "stream without options injects include_usage", stream: &streamTrue, wantOptions: &dto.StreamOptions{IncludeUsage: true}},
+		{name: "stream with explicit false is forced true", stream: &streamTrue, streamOptions: &dto.StreamOptions{IncludeUsage: false}, wantOptions: &dto.StreamOptions{IncludeUsage: true}},
+		{name: "stream with explicit true is kept", stream: &streamTrue, streamOptions: &dto.StreamOptions{IncludeUsage: true}, wantOptions: &dto.StreamOptions{IncludeUsage: true}},
+		{name: "non-stream without options stays nil", stream: &streamFalse},
+		{name: "nil stream stays nil", stream: nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ResponsesRequestToChatCompletionsRequest(&dto.OpenAIResponsesRequest{
+				Model:         "gpt-test",
+				Input:         mustRawMessage(t, "hello"),
+				Stream:        tt.stream,
+				StreamOptions: tt.streamOptions,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantOptions, got.StreamOptions)
+		})
+	}
+}
+
 func mustRawMessage(t *testing.T, value any) []byte {
 	t.Helper()
 	raw, err := kitutil.Marshal(value)

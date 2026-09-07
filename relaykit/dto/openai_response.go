@@ -3,6 +3,9 @@ package dto
 import (
 	"encoding/json"
 	"fmt"
+	"math"
+	"strconv"
+	"strings"
 
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -290,10 +293,34 @@ type OutputTokenDetails struct {
 	ReasoningTokens int `json:"reasoning_tokens"`
 }
 
+// EpochSeconds is a unix timestamp in seconds that tolerates fractional
+// values from upstreams (e.g. 1787207287.0); a plain int field would fail to
+// unmarshal and drop the whole response or stream event. It marshals as an
+// integer.
+type EpochSeconds int64
+
+func (e *EpochSeconds) UnmarshalJSON(data []byte) error {
+	var f float64
+	if err := kitutil.Unmarshal(data, &f); err == nil {
+		*e = EpochSeconds(math.Round(f))
+		return nil
+	}
+	var s string
+	if err := kitutil.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	n, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return err
+	}
+	*e = EpochSeconds(math.Round(n))
+	return nil
+}
+
 type OpenAIResponsesResponse struct {
 	ID                 string             `json:"id"`
 	Object             string             `json:"object"`
-	CreatedAt          int                `json:"created_at"`
+	CreatedAt          EpochSeconds       `json:"created_at"`
 	Status             json.RawMessage    `json:"status"`
 	Error              any                `json:"error,omitempty"`
 	IncompleteDetails  *IncompleteDetails `json:"incomplete_details,omitempty"`
@@ -395,6 +422,10 @@ type ResponsesStreamResponse struct {
 	SummaryIndex *int                           `json:"summary_index,omitempty"`
 	ItemID       string                         `json:"item_id,omitempty"`
 	Part         *ResponsesReasoningSummaryPart `json:"part,omitempty"`
+	// - response.function_call_arguments.done (full accumulated arguments)
+	Arguments string `json:"arguments,omitempty"`
+	// - response.output_text.done (full accumulated text)
+	Text string `json:"text,omitempty"`
 }
 
 // GetOpenAIError 从动态错误类型中提取OpenAIError结构

@@ -174,7 +174,6 @@ require (
 // Patch gorm postgres driver: typeAliasMap adds varchar alias so explicit
 // type:varchar(N) columns are not treated as type-mismatched on every startup
 // (was: ALTER TABLE ... TYPE on each boot, blocked by views referencing the column).
-replace gorm.io/driver/postgres => ./third_party/gorm-postgres
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.46.0
 	github.com/QuantumNous/new-api/relaykit v0.0.0

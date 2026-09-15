@@ -98,6 +98,18 @@ const createRoutingReliabilitySchema = (
             t('Channel test concurrency must be between 1 and 32')
           ),
         channel_test_mode: z.enum(channelTestModes),
+        channel_test_whitelist: z
+          .string()
+          .refine(
+            (value) =>
+              value.trim() === '' ||
+              value
+                .split(',')
+                .every((part) => /^\d+$/.test(part.trim()) && Number(part) > 0),
+            t(
+              'Channel test whitelist must be positive channel IDs separated by commas'
+            )
+          ),
       }),
     })
     .superRefine((values, ctx) => {
@@ -147,12 +159,26 @@ type RoutingReliabilitySectionProps = {
     'monitor_setting.auto_test_channel_minutes': number
     'monitor_setting.channel_test_concurrency': number
     'monitor_setting.channel_test_mode': ChannelTestMode
+    'monitor_setting.channel_test_whitelist': number[]
   }
 }
 
 function normalizeLineEndings(value: string) {
   return value.replaceAll('\r\n', '\n')
 }
+
+const formatChannelIdList = (ids?: number[]): string => (ids ?? []).join(', ')
+
+// The backend stores the whitelist as a JSON array string (e.g. "[1,5,23]");
+// an empty list is stored as "[]" so the field can be cleared from the UI.
+const channelIdListToJson = (raw: string): string =>
+  JSON.stringify(
+    raw
+      .split(',')
+      .map((part) => part.trim())
+      .filter((part) => part !== '')
+      .map((part) => Number(part))
+  )
 
 type NormalizedRoutingReliabilityValues = {
   RetryTimes: number
@@ -166,6 +192,7 @@ type NormalizedRoutingReliabilityValues = {
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.channel_test_concurrency': number
   'monitor_setting.channel_test_mode': ChannelTestMode
+  'monitor_setting.channel_test_whitelist': string
 }
 
 function normalizeChannelTestMode(value?: string): ChannelTestMode {
@@ -197,6 +224,9 @@ const buildFormDefaults = (
     channel_test_mode: normalizeChannelTestMode(
       defaults['monitor_setting.channel_test_mode']
     ),
+    channel_test_whitelist: formatChannelIdList(
+      defaults['monitor_setting.channel_test_whitelist']
+    ),
   },
 })
 
@@ -225,6 +255,9 @@ const normalizeDefaults = (
   'monitor_setting.channel_test_mode': normalizeChannelTestMode(
     defaults['monitor_setting.channel_test_mode']
   ),
+  'monitor_setting.channel_test_whitelist': channelIdListToJson(
+    formatChannelIdList(defaults['monitor_setting.channel_test_whitelist'])
+  ),
 })
 
 const normalizeFormValues = (
@@ -250,6 +283,9 @@ const normalizeFormValues = (
   'monitor_setting.channel_test_concurrency':
     values.monitor_setting.channel_test_concurrency,
   'monitor_setting.channel_test_mode': values.monitor_setting.channel_test_mode,
+  'monitor_setting.channel_test_whitelist': channelIdListToJson(
+    values.monitor_setting.channel_test_whitelist
+  ),
 })
 
 export function RoutingReliabilitySection({
@@ -526,6 +562,29 @@ export function RoutingReliabilitySection({
                     <FormDescription>
                       {t(
                         'Maximum number of channels tested at the same time (1-32)'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='monitor_setting.channel_test_whitelist'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Channel test whitelist')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder={t('e.g. 1, 5, 23')}
+                        value={field.value}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Only the listed channels are probed by scheduled tests. Leave empty to test all channels. The manual test-all action is not affected.'
                       )}
                     </FormDescription>
                     <FormMessage />

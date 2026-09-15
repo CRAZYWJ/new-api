@@ -28,6 +28,10 @@ const defaultModelSettings: ModelSettings = {
   'global.pass_through_request_enabled': false,
   'global.thinking_model_blacklist': '[]',
   'global.chat_completions_to_responses_policy': '{}',
+  'global.input_modality_policy':
+    '{"enabled":true,"models":{"deepseek-chat":{"text":true,"image":false},"deepseek-reasoner":{"text":true,"image":false},"deepseek-v4-flash":{"text":true,"image":false},"deepseek-v4-pro":{"text":true,"image":false}}}',
+  'global.input_modality_policy':
+    '{"enabled":true,"models":{"deepseek-chat":{"text":true,"image":false},"deepseek-reasoner":{"text":true,"image":false},"deepseek-v4-flash":{"text":true,"image":false},"deepseek-v4-pro":{"text":true,"image":false}}}',
   'general_setting.ping_interval_enabled': false,
   'general_setting.ping_interval_seconds': 60,
   'gemini.safety_settings': '',
@@ -76,6 +80,8 @@ const defaultModelSettings: ModelSettings = {
   'monitor_setting.auto_test_channel_minutes': 10,
   'monitor_setting.channel_test_concurrency': 1,
   'monitor_setting.channel_test_mode': 'scheduled_all',
+  'monitor_setting.channel_test_whitelist': [],
+  'monitor_setting.channel_test_whitelist': [],
   'channel_affinity_setting.enabled': false,
   'channel_affinity_setting.switch_on_success': true,
   'channel_affinity_setting.keep_on_channel_disabled': false,

@@ -43,6 +43,7 @@ type GlobalSettings struct {
 	// family whitelist but whose names already end in an effort word.
 	EffortTailModelIDs               []string                         `json:"effort_tail_model_ids"`
 	ChatCompletionsToResponsesPolicy ChatCompletionsToResponsesPolicy `json:"chat_completions_to_responses_policy"`
+	InputModalityPolicy              InputModalityPolicy              `json:"input_modality_policy"`
 }
 
 // 默认配置
@@ -63,6 +64,7 @@ var defaultOpenaiSettings = GlobalSettings{
 		Enabled:     false,
 		AllChannels: true,
 	},
+	InputModalityPolicy: defaultInputModalityPolicy(),
 }
 
 // 全局实例

@@ -294,6 +294,18 @@ func ConvertStreamResponse(c context.Context, info convmeta.Meta, target types.R
 	return executeStatelessStreamResponseSpec(c, info, from, target, response, spec)
 }
 
+// FinalizeChatStreamResponseToClaude emits the terminal Claude events
+// (content_block_stop / message_delta / message_stop) for a chat→Claude
+// stream whose converter deferred closing while waiting for a usage-only
+// chunk that never arrived. It is a no-op once the stream already closed.
+func FinalizeChatStreamResponseToClaude(_ context.Context, info convmeta.Meta) ([]*dto.ClaudeResponse, *dto.Usage, error) {
+	if info == nil {
+		info = &convmeta.Values{}
+	}
+	usage := info.EnsureClaudeConvertInfo().Usage
+	return oaichat.FinalizeStreamResponseOpenAI2Claude(info), usage, nil
+}
+
 func NewResponseStreamState(from types.RelayFormat, target types.RelayFormat, options ResponseStreamOptions) (*ResponseStreamState, error) {
 	if from == "" {
 		return nil, errors.New("source relay format is required")

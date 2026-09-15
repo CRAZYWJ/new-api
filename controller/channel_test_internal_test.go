@@ -344,6 +344,25 @@ func TestSelectChannelsForAutomaticTestAutoBanOnlyUsesEligibleChannels(t *testin
 	require.Equal(t, 3, selected[1].Id)
 }
 
+func TestFilterChannelsByWhitelist(t *testing.T) {
+	channels := []*model.Channel{
+		{Id: 1, Status: common.ChannelStatusEnabled},
+		{Id: 2, Status: common.ChannelStatusEnabled},
+		{Id: 3, Status: common.ChannelStatusAutoDisabled},
+	}
+
+	// empty whitelist keeps every channel
+	same := filterChannelsByWhitelist(channels, nil)
+	require.Equal(t, channels, same)
+	require.Len(t, filterChannelsByWhitelist(channels, []int{}), 3)
+
+	// non-empty whitelist keeps only the listed IDs, order preserved
+	filtered := filterChannelsByWhitelist(channels, []int{3, 1, 99})
+	require.Len(t, filtered, 2)
+	require.Equal(t, 1, filtered[0].Id)
+	require.Equal(t, 3, filtered[1].Id)
+}
+
 func TestRunChannelTestWorkersHonorsConfiguredConcurrency(t *testing.T) {
 	originalInterval := common.RequestInterval
 	common.RequestInterval = 0

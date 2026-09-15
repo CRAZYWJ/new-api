@@ -224,6 +224,19 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 		for _, resp := range claudeResponses {
 			_ = helper.ClaudeData(c, *resp)
 		}
+		if !info.ClaudeConvertInfo.Done {
+			// The converter deferred closing because the finish chunk carried no
+			// usage (no usage-only chunk ever arrived). Emit the terminal events
+			// now so the client's stream ends properly instead of dangling.
+			finalized, _, finErr := relayconvert.FinalizeChatStreamResponseToClaude(c, info)
+			if finErr != nil {
+				common.SysLog("error finalizing Claude stream response: " + finErr.Error())
+			} else {
+				for _, resp := range finalized {
+					_ = helper.ClaudeData(c, *resp)
+				}
+			}
+		}
 		info.ClaudeConvertInfo.Done = true
 
 	case types.RelayFormatGemini:

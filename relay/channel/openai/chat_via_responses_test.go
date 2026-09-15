@@ -278,3 +278,58 @@ func requireOrderedSubstrings(t *testing.T, s string, parts ...string) {
 		offset += idx + len(part)
 	}
 }
+
+// eventBlockData extracts the data payload of one SSE event block.
+func eventBlockData(t *testing.T, s, eventType string) string {
+	t.Helper()
+	needle := "event: " + eventType + "\n"
+	idx := strings.Index(s, needle)
+	require.NotEqualf(t, -1, idx, "missing event %q", eventType)
+	block := s[idx+len(needle):]
+	if end := strings.Index(block, "\n\n"); end >= 0 {
+		block = block[:end]
+	}
+	var data string
+	for _, line := range strings.Split(block, "\n") {
+		if strings.HasPrefix(line, "data: ") {
+			data = line[len("data: "):]
+		}
+	}
+	return data
+}
+
+func TestOaiChatToResponsesStreamHandlerDoneEventsCarryFullContent(t *testing.T) {
+	oldMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(oldMode) })
+
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	body := strings.Join([]string{
+		`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","created":1710000000,"model":"gpt-test","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","created":1710000000,"model":"gpt-test","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","created":1710000000,"model":"gpt-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"bash","arguments":"{\"command\":"}}]},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","created":1710000000,"model":"gpt-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"ls\"}"}}]},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","created":1710000000,"model":"gpt-test","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+		`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","created":1710000000,"model":"gpt-test","choices":[],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}`,
+		`data: [DONE]`,
+		``,
+	}, "\n")
+
+	c, recorder, resp, info := newResponsesChatTestContext(t, body, true)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	_, err := OaiChatToResponsesStreamHandler(c, info, resp)
+	require.Nil(t, err)
+
+	got := recorder.Body.String()
+
+	argsDone := eventBlockData(t, got, "response.function_call_arguments.done")
+	require.Contains(t, argsDone, `"arguments":"{\"command\":\"ls\"}"`)
+	require.Contains(t, argsDone, `"item_id":"call_1"`)
+
+	textDone := eventBlockData(t, got, "response.output_text.done")
+	require.Contains(t, textDone, `"text":"hello"`)
+}

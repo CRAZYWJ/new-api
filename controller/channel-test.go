@@ -1095,12 +1095,20 @@ func runChannelTestTask(ctx context.Context, mode string, notify bool, report fu
 	if err != nil {
 		return channelTestSummary{}, err
 	}
-	if strings.TrimSpace(mode) == "" {
-		mode = operation_setting.GetMonitorSetting().ChannelTestMode
+	monitor := operation_setting.GetMonitorSetting()
+	// An empty mode means a scheduled run; a manual trigger passes
+	// ChannelTestModeScheduledAll explicitly. The whitelist only restricts
+	// scheduled runs so "test all channels" keeps testing everything.
+	scheduled := strings.TrimSpace(mode) == ""
+	if scheduled {
+		mode = monitor.ChannelTestMode
 	}
 	selected := selectChannelsForAutomaticTest(channels, mode)
+	if scheduled {
+		selected = filterChannelsByWhitelist(selected, monitor.ChannelTestWhitelist)
+	}
 	allowDisable := mode != operation_setting.ChannelTestModePassiveRecovery
-	concurrency := operation_setting.GetMonitorSetting().ChannelTestConcurrency
+	concurrency := monitor.ChannelTestConcurrency
 	summary := performChannelTests(ctx, selected, testUserID, allowDisable, concurrency, report)
 	if notify && (ctx == nil || ctx.Err() == nil) {
 		service.NotifyRootUser(dto.NotifyTypeChannelTest, "通道测试完成", "所有通道测试已完成")
@@ -1123,6 +1131,25 @@ func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*m
 		selected = append(selected, channel)
 	}
 	return selected
+}
+
+// filterChannelsByWhitelist keeps only the channels whose ID is listed in
+// whitelist. An empty whitelist means no restriction.
+func filterChannelsByWhitelist(channels []*model.Channel, whitelist []int) []*model.Channel {
+	if len(whitelist) == 0 {
+		return channels
+	}
+	allowed := make(map[int]struct{}, len(whitelist))
+	for _, id := range whitelist {
+		allowed[id] = struct{}{}
+	}
+	filtered := make([]*model.Channel, 0, len(channels))
+	for _, channel := range channels {
+		if _, ok := allowed[channel.Id]; ok {
+			filtered = append(filtered, channel)
+		}
+	}
+	return filtered
 }
 
 // TestAllChannels enqueues a channel_test system task instead of running the
